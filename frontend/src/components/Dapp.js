@@ -1,37 +1,22 @@
 import React from "react";
 
-// We'll use ethers to interact with the Ethereum network and our contract
-import { ethers } from "ethers";
+import {Contract} from "ethers";
+import {OptimismProvider} from '@eth-optimism/provider'
+import {Web3Provider} from '@ethersproject/providers'
 
-// We import the contract's artifacts and address here, as we are going to be
-// using them with ethers
 import CounterArtifact from "../contracts/Counter.json";
 import contractAddress from "../contracts/contract-address.json";
 
-// All the logic of this dapp is contained in the Dapp component.
-// These other components are just presentational ones: they don't have any
-// logic. They just render HTML.
-import { NoWalletDetected } from "./NoWalletDetected";
-import { ConnectWallet } from "./ConnectWallet";
-import { Loading } from "./Loading";
-import { CountUp } from "./CountUp";
-import { TransactionErrorMessage } from "./TransactionErrorMessage";
-import { WaitingForTransactionMessage } from "./WaitingForTransactionMessage";
+import {NoWalletDetected} from "./NoWalletDetected";
+import {ConnectWallet} from "./ConnectWallet";
+import {Loading} from "./Loading";
+import {CountUp} from "./CountUp";
+import {TransactionErrorMessage} from "./TransactionErrorMessage";
+import {WaitingForTransactionMessage} from "./WaitingForTransactionMessage";
 
 
-// This is an error code that indicates that the user canceled a transaction
 const ERROR_CODE_TX_REJECTED_BY_USER = 4001;
 
-// This component is in charge of doing these things:
-//   1. It connects to the user's wallet
-//   2. Initializes ethers and the Token contract
-//   3. Polls the user balance to keep it updated.
-//   4. Transfers tokens by sending transactions
-//   5. Renders the whole application
-//
-// Note that (3) and (4) are specific of this sample application, but they show
-// you how to keep your Dapp and contract's state in sync,  and how to send a
-// transaction.
 export class Dapp extends React.Component {
   constructor(props) {
     super(props);
@@ -39,7 +24,6 @@ export class Dapp extends React.Component {
     // We store multiple things in Dapp's state.
     // You don't need to follow this pattern, but it's an useful example.
     this.initialState = {
-      // The info of the token (i.e. It's Name and symbol)
       counterData: undefined,
       // The user's address and balance
       selectedAddress: undefined,
@@ -50,17 +34,19 @@ export class Dapp extends React.Component {
     };
 
     this.state = this.initialState;
+    this._web3 = undefined;
+    this._provider = undefined;
   }
 
   render() {
     // Ethereum wallets inject the window.ethereum object. If it hasn't been
     // injected, we instruct the user to install MetaMask.
     if (window.ethereum === undefined) {
-      return <NoWalletDetected />;
+      return <NoWalletDetected/>;
     }
 
     // The next thing we need to do, is to ask the user to connect their wallet.
-    // When the wallet gets connected, we are going to save the users's address
+    // When the wallet gets connected, we are going to save the user's address
     // in the component's state. So, if it hasn't been saved yet, we have
     // to show the ConnectWallet component.
     //
@@ -68,18 +54,16 @@ export class Dapp extends React.Component {
     // clicks a button. This callback just calls the _connectWallet method.
     if (!this.state.selectedAddress || this.state.networkError) {
       return (
-        <ConnectWallet 
-          connectWallet={() => this._connectWallet()} 
+        <ConnectWallet
+          connectWallet={() => this._connectWallet()}
           networkError={this.state.networkError}
           dismiss={() => this._dismissNetworkError()}
         />
       );
     }
 
-    // If the token data or the user's balance hasn't loaded yet, we show
-    // a loading component.
     if (!this.state.counterData) {
-      return <Loading />;
+      return <Loading/>;
     }
 
     // If everything is loaded, we render the application.
@@ -96,20 +80,19 @@ export class Dapp extends React.Component {
           </div>
         </div>
 
-        <hr />
+        <hr/>
 
         <div className="row">
           <div className="col-12">
-            {/* 
-              Sending a transaction isn't an immidiate action. You have to wait
-              for it to be mined.
+            {/*
+              Sending a transaction isn't an immediate action. You have to wait for it to be mined.
               If we are waiting for one, we show a message here.
             */}
             {this.state.txBeingSent && (
-              <WaitingForTransactionMessage txHash={this.state.txBeingSent} />
+              <WaitingForTransactionMessage txHash={this.state.txBeingSent}/>
             )}
 
-            {/* 
+            {/*
               Sending a transaction can fail in multiple ways. 
               If that happened, we show a message here.
             */}
@@ -125,14 +108,11 @@ export class Dapp extends React.Component {
         <div className="row">
           <div className="col-12">
             {/*
-              This component displays a form that the user can use to send a 
-              transaction and transfer some tokens.
-              The component doesn't have logic, it just calls the transferTokens
-              callback.
+              This component displays a form that the user can use to send a transaction.
             */}
             {(
               <CountUp
-                  countUp={() => this._countUp()}
+                countUp={() => this._countUp()}
               />
             )}
           </div>
@@ -142,8 +122,7 @@ export class Dapp extends React.Component {
   }
 
   componentWillUnmount() {
-    // We poll the user's balance, so we have to stop doing that when Dapp
-    // gets unmounted
+    // Stop polling when the Dapp gets unmounted
     this._stopPollingData();
   }
 
@@ -153,11 +132,9 @@ export class Dapp extends React.Component {
 
     // To connect to the user's wallet, we have to run this method.
     // It returns a promise that will resolve to the user's address.
-    console.log(await window.ethereum.send("eth_requestAccounts"));
     const [selectedAddress] = (await window.ethereum.send("eth_requestAccounts")).result;
 
     // Once we have the address, we can initialize the application.
-
     this._initialize(selectedAddress);
 
     // We reinitialize it whenever the user changes their account.
@@ -166,14 +143,14 @@ export class Dapp extends React.Component {
       // `accountsChanged` event can be triggered with an undefined newAddress.
       // This happens when the user removes the Dapp from the "Connected
       // list of sites allowed access to your addresses" (Metamask > Settings > Connections)
-      // To avoid errors, we reset the dapp state 
+      // To avoid errors, we reset the dapp state
       if (newAddress === undefined) {
         return this._resetState();
       }
-      
+
       this._initialize(newAddress);
     });
-    
+
     // We reset the dapp state if the network is changed
     window.ethereum.on("networkChanged", ([networkId]) => {
       this._stopPollingData();
@@ -189,30 +166,31 @@ export class Dapp extends React.Component {
       selectedAddress: userAddress,
     });
 
-    // Then, we initialize ethers, fetch the token's data, and start polling
-    // for the user's balance.
+    // Then, we initialize ethers and start polling for the user's balance.
 
     // Fetching the token data and the user's balance are specific to this
     // sample project, but you can reuse the same initialization pattern.
-    await this._intializeEthers();
+    await this._intializeProvider();
     try {
       console.log(this._counter);
       this._startPollingData();
       this._updateCounterData();
     } catch (error) {
-      this.setState({ networkError: 'Counter contract not found on this network.' });
+      this.setState({networkError: 'Counter contract not found on this network.'});
     }
   }
 
-  async _intializeEthers() {
+  async _intializeProvider() {
     // We first initialize ethers by creating a provider using window.ethereum
-    this._provider = new ethers.providers.Web3Provider(window.ethereum);
+    this._web3 = new Web3Provider(window.ethereum);
+    // TODO: don't just localhost here
+    this._provider = new OptimismProvider('http://localhost:8545', this._web3);
 
     // When, we initialize the contract using that provider and the token's
     // artifact. You can do this same thing with your contracts.
-    this._counter = await new ethers.Contract(
+    this._counter = await new Contract(
       contractAddress.Counter,
-        CounterArtifact.abi,
+      CounterArtifact.abi,
       this._provider.getSigner(0)
     );
   }
@@ -222,8 +200,7 @@ export class Dapp extends React.Component {
   // pattern to read any data from your contracts.
   //
   // Note that if you don't need it to update in near real time, you probably
-  // don't need to poll it. If that's the case, you can just fetch it when you
-  // initialize the app, as we do with the token data.
+  // don't need to poll it.
   _startPollingData() {
     this._pollDataInterval = setInterval(() => this._updateCounterData(), 1000);
 
@@ -236,12 +213,11 @@ export class Dapp extends React.Component {
     this._pollDataInterval = undefined;
   }
 
-  // The next two methods just read from the contract and store the results
-  // in the component state.
+  // The next two methods just read from the contract and store the results in the component state.
   async _updateCounterData() {
     console.log(this._counter)
     const count = await this._counter.count();
-    this.setState({ counterData: { count } });
+    this.setState({counterData: {count}});
   }
 
   async _countUp() {
@@ -254,7 +230,7 @@ export class Dapp extends React.Component {
       // We send the transaction, and save its hash in the Dapp's state. This
       // way we can indicate that we are waiting for it to be mined.
       const tx = await this._counter.countUp();
-      this.setState({ txBeingSent: tx.hash });
+      this.setState({txBeingSent: tx.hash});
 
       // We use .wait() to wait for the transaction to be mined. This method
       // returns the transaction's receipt.
@@ -281,22 +257,22 @@ export class Dapp extends React.Component {
       // Other errors are logged and stored in the Dapp's state. This is used to
       // show them to the user, and for debugging.
       console.error(error);
-      this.setState({ transactionError: error });
+      this.setState({transactionError: error});
     } finally {
       // If we leave the try/catch, we aren't sending a tx anymore, so we clear
       // this part of the state.
-      this.setState({ txBeingSent: undefined });
+      this.setState({txBeingSent: undefined});
     }
   }
 
   // This method just clears part of the state.
   _dismissTransactionError() {
-    this.setState({ transactionError: undefined });
+    this.setState({transactionError: undefined});
   }
 
   // This method just clears part of the state.
   _dismissNetworkError() {
-    this.setState({ networkError: undefined });
+    this.setState({networkError: undefined});
   }
 
   // This is an utility method that turns an RPC error into a human readable
